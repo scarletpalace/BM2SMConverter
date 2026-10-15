@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 from tqdm import tqdm
 
 from bm2sm.data_structures import NotefieldObject
-from bm2sm.definitions import Keys, Representations, standard_tqdm
+from bm2sm.definitions import Keys, Representations, standard_tqdm, warn
 from bm2sm.exceptions import EmptyChart, UnknownDifficulty, UnsupportedGameMode
 from modules.additional_functions import lcm
 from modules.decorators import transform_args
@@ -140,6 +140,10 @@ class SMChartConverter(object):
         setter = self.make_setter(field)
 
         def inner(new_value):
+            # A missing image is left out instead of failing the whole conversion
+            if not self._parent.chart_file_exists(new_value):
+                warn('{} file not found, leaving it out: {}'.format(field, new_value))
+                return
             self._parent.add_file_to_copy(new_value)
             setter(new_value)
 

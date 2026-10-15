@@ -1,7 +1,7 @@
 from fractions import Fraction
 from glob import glob, escape
 from io import StringIO
-from os import path
+from os import makedirs, path
 from re import findall, match
 from shutil import copy2
 
@@ -11,7 +11,7 @@ from bm2sm.OGG_converter import OGGConverter
 from bm2sm.SM_converter import SMChartConverter
 from bm2sm.custom_fake_types import BPM, Beat, MsStop, Segment
 from bm2sm.data_structures import Datum, NotefieldObject, Sound, SoundSample
-from bm2sm.definitions import Keys, Representations, standard_tqdm
+from bm2sm.definitions import Keys, Representations, standard_tqdm, warn
 from bm2sm.exceptions import BPMIsNotDefined, LNTypeUnsupportedError, NotPlayer1Error, \
     StopIsNotDefined, UndecidableAudioFile, UnsupportedControlFlowError
 from bm2sm.timing_manager import TimingSectionManager
@@ -215,7 +215,7 @@ class BMChartParser(object):
                 previous_object = self._last_key_objects.get(key)
                 if previous_object is None or previous_object.symbol != Representations.TAP:
                     # No note to start the LN from (e.g. two end points in a row), so it is ignored
-                    print('Ignoring LN end point without a start point at {}'.format(datum.global_position))
+                    warn('Ignoring LN end point without a start point at measure {:.3f}'.format(float(datum.initial_position)))
                     return
                 previous_object.symbol = Representations.LN_START
                 new_object = NotefieldObject(datum.global_position,
@@ -342,10 +342,11 @@ class BMChartParser(object):
 
         with standard_tqdm(iterable=self._affected_files, desc="Copying files into new directory") as progress_affected_files:
             for file_path in progress_affected_files:
-                file_name = path.split(file_path)[1]
-                output_file = path.join(output_dir, file_name)
+                # Keep the path relative to the chart, since that is how the SM file refers to it
+                output_file = path.join(output_dir, path.relpath(file_path, self.BM_file_dir))
                 if path.exists(output_file):
-                    return
+                    continue
+                makedirs(path.dirname(output_file), exist_ok=True)
                 copy2(file_path, output_file)
 
     @staticmethod
@@ -514,6 +515,9 @@ class BMChartParser(object):
                             advanced_deciders[candidate](value, *additional_data)
                         else:
                             advanced_deciders[candidate](value, additional_data)
+
+    def chart_file_exists(self, file_path):
+        return path.isfile(path.join(self.BM_file_dir, file_path))
 
     def add_file_to_copy(self, file_path):
         file_path = (file_path

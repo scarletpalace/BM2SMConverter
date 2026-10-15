@@ -12,6 +12,11 @@ def standard_tqdm(*args, **kwargs):
                 **kwargs)
 
 
+def warn(message):
+    # Warnings stay visible even when non-verbose mode silences regular output
+    print('Warning: {}'.format(message), file=sys.__stderr__, flush=True)
+
+
 class Keys(object):
     KEY_1 = 0
     KEY_2 = 1
