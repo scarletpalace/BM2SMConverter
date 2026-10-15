@@ -25,7 +25,7 @@ This should print out usage message.
 
 ```
 usage: BM2SMConverter.py [-h] (-I IN_FILE | -L LIST) [-O OUT_DIR] [-K KEYS]
-                         [-M {ALL,SM,AUDIO}] [-V]
+                         [-M {ALL,SM,AUDIO}] [-S SEED] [-V]
 
 Convert BM files to SM
 
@@ -50,6 +50,9 @@ options:
                         Converter mode, useful for batch conversion. SM will
                         only convert to SM chart. AUDIO only bakes OGG audio
                         file. ALL does both. Default: ALL.
+  -S, --seed SEED       Seed for charts using #RANDOM/#SWITCH, which get
+                        random branches picked. The same seed always picks the
+                        same branches. Default: a new random pick every time.
   -V, --verbose         Verbose mode, will print all kinds of messages if set.
 ```
 
@@ -81,8 +84,6 @@ A chart that fails to convert is reported and skipped, and a summary of failed c
 * ValueError: Usually indicates an error with one of the values in the chart, such as negative BPM or incorrect stop. May also indicate an internal error.
 
 * NotPlayer1Error: The chart is not for player 1. Such charts are planned to be supported in the future.
-
-* UnsupportedControlFlowError: The chart uses control flow gimmicks. There is no way to represent this in Stepmania. Support is not planned, but possible.
 
 * StopIsNotDefined: Somewhere in the chart there is a stop invokation that has not been defined in any #STOP.
 

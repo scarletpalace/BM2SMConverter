@@ -12,6 +12,11 @@ def standard_tqdm(*args, **kwargs):
                 **kwargs)
 
 
+def normalize_chart_path(file_path):
+    """Charts are mostly made on Windows, so paths in them may use backslashes"""
+    return file_path.strip().replace('\\', '/')
+
+
 def warn(message):
     # Warnings stay visible even when non-verbose mode silences regular output
     print('Warning: {}'.format(message), file=sys.__stderr__, flush=True)

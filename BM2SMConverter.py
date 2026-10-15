@@ -17,8 +17,8 @@ import bm2sm.BM_parser
 tqdm.monitor_interval = 0
 
 
-def convert(in_file, out_dir, keys, mode):
-    parser = bm2sm.BM_parser.BMChartParser(in_file, out_dir, keys, mode != 'SM')
+def convert(in_file, out_dir, keys, mode, seed=None):
+    parser = bm2sm.BM_parser.BMChartParser(in_file, out_dir, keys, mode != 'SM', seed)
 
     if mode != 'AUDIO':
         parser.SM_converter.compose_chart()
@@ -36,7 +36,7 @@ def read_file_list(list_file):
         return [line.strip('"\'') for line in lines if line and not line.startswith('#')]
 
 
-def batch_convert(in_files, out_dir, keys, mode):
+def batch_convert(in_files, out_dir, keys, mode, seed=None):
     # Status goes to the real stdout, since non-verbose mode silences sys.stdout
     status = sys.__stdout__
     used_names = set()
@@ -72,7 +72,7 @@ def batch_convert(in_files, out_dir, keys, mode):
             if not path.isfile(in_file):
                 raise FileNotFoundError('File not found')
             makedirs(chart_out_dir, exist_ok=True)
-            convert(in_file, chart_out_dir, keys, mode)
+            convert(in_file, chart_out_dir, keys, mode, seed)
         except Exception as e:
             failed.append(in_file)
             print('    Failed: {}: {}'.format(type(e).__name__, e), file=status, flush=True)
@@ -129,6 +129,13 @@ if __name__ == '__main__':
                                  'ALL does both. '
                                  'Default: ALL.')
 
+    arg_parser.add_argument('-S', '--seed',
+                            action='store',
+                            default=None,
+                            help='Seed for charts using #RANDOM/#SWITCH, which get random branches picked. '
+                                 'The same seed always picks the same branches. Default: a new random pick every time.',
+                            type=int)
+
     arg_parser.add_argument('-V', '--verbose',
                             action='store_true',
                             default=False,
@@ -147,10 +154,10 @@ if __name__ == '__main__':
         sys.stderr = sys.stdout  # Another one for progress bars
 
     if args.list:
-        success = batch_convert(read_file_list(args.list), args.out_dir, args.keys, args.mode)
+        success = batch_convert(read_file_list(args.list), args.out_dir, args.keys, args.mode, args.seed)
         sys.exit(0 if success else 1)
 
     if not args.out_dir:
         args.out_dir = path.split(args.in_file)[0]
 
-    convert(args.in_file, args.out_dir, args.keys, args.mode)
+    convert(args.in_file, args.out_dir, args.keys, args.mode, args.seed)

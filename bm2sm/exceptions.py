@@ -6,10 +6,6 @@ class LNTypeUnsupportedError(ConversionError):
     pass
 
 
-class UnsupportedControlFlowError(ConversionError):
-    pass
-
-
 class NotPlayer1Error(ConversionError):
     pass
 

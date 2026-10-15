@@ -1,6 +1,7 @@
 from fractions import Fraction
 from glob import glob, escape
 from io import StringIO
+from random import Random
 from os import makedirs, path
 from re import findall, match
 from shutil import copy2
@@ -9,11 +10,12 @@ from chardet import detect as char_detect
 
 from bm2sm.OGG_converter import OGGConverter
 from bm2sm.SM_converter import SMChartConverter
+from bm2sm.control_flow import resolve_control_flow
 from bm2sm.custom_fake_types import BPM, Beat, MsStop, Segment
 from bm2sm.data_structures import Datum, NotefieldObject, Sound, SoundSample
-from bm2sm.definitions import Keys, Representations, standard_tqdm, warn
+from bm2sm.definitions import Keys, Representations, normalize_chart_path, standard_tqdm, warn
 from bm2sm.exceptions import BPMIsNotDefined, LNTypeUnsupportedError, NotPlayer1Error, \
-    StopIsNotDefined, UndecidableAudioFile, UnsupportedControlFlowError
+    StopIsNotDefined, UndecidableAudioFile
 from bm2sm.timing_manager import TimingSectionManager
 from modules import null_func
 from modules.decorators import transform_args
@@ -24,7 +26,8 @@ from modules.functions import base_16_to_dec, is_non_str_sequence
 class BMChartParser(object):
     """A class where all the heavy lifting of parsing BM files is happening."""
 
-    def __init__(self, in_file, out_dir, keys, load_sounds):
+    def __init__(self, in_file, out_dir, keys, load_sounds, seed=None):
+        self._random = Random(seed)
         self._extended_BPM_definitions = {}
         self._extended_stop_definitions = {}
         self._wav_files_definitions = {}
@@ -150,7 +153,8 @@ class BMChartParser(object):
     @transform_args(..., ..., Segment)
     def _define_wav(self, value, wav_id):
         header = path.dirname(self.BM_file_path)
-        filename = path.splitext(path.basename(value))[0]
+        # Keep the subfolder the sound is in, the extension is matched freely
+        filename = path.splitext(normalize_chart_path(value))[0]
         file_path = escape(path.join(header, filename))
         candidates = glob(file_path + '.*')
 
@@ -317,9 +321,6 @@ class BMChartParser(object):
                 if probable_keyword in subtitle:
                     self.SM_converter.set_difficulty(probable_diff)
 
-    def _puke_from_gimmicks(self, _=0):
-        raise UnsupportedControlFlowError
-
     @transform_args(..., BPM, **{
         '@1': 'Invalid initial BPM'
     })
@@ -379,6 +380,10 @@ class BMChartParser(object):
 
         # StringIO mimics text-mode file reading, including newline translation
         data = StringIO(self._decode_chart(raw_data), newline=None).readlines()
+
+        data, randoms_generated = resolve_control_flow(data, self._random)
+        if randoms_generated:
+            warn('Chart uses #RANDOM/#SWITCH, picked random branches for {} of them'.format(randoms_generated))
 
         with standard_tqdm(iterable=data, desc='Performing static reading') as progress_data:
             for datum in progress_data:
@@ -479,19 +484,6 @@ class BMChartParser(object):
             'LNOBJ': self._add_ln_object,
             'STAGEFILE': self.SM_converter.make_file_setter('bg'),
             'BANNER': self.SM_converter.make_file_setter('banner'),
-            'END IF': self._puke_from_gimmicks,
-            'ELSE': self._puke_from_gimmicks,
-            'ENDRANDOM': self._puke_from_gimmicks,
-            'SKIP': self._puke_from_gimmicks,
-            'DEF': self._puke_from_gimmicks,
-            'ENDSW': self._puke_from_gimmicks,
-            'RANDOM': self._puke_from_gimmicks,
-            'IF': self._puke_from_gimmicks,
-            'RONDAM': self._puke_from_gimmicks,
-            'SETRANDOM': self._puke_from_gimmicks,
-            'ELSEIF': self._puke_from_gimmicks,
-            'SWITCH': self._puke_from_gimmicks,
-            'CASE': self._puke_from_gimmicks,
         }
 
         advanced_deciders = {
@@ -516,8 +508,15 @@ class BMChartParser(object):
                         else:
                             advanced_deciders[candidate](value, additional_data)
 
-    def chart_file_exists(self, file_path):
-        return path.isfile(path.join(self.BM_file_dir, file_path))
+    def find_chart_file(self, file_path):
+        """Return the path of a file referenced by the chart relative to it, or None if there is no such file."""
+        if path.isfile(path.join(self.BM_file_dir, file_path)):
+            return file_path
+        # Like with sounds, the extension written in the chart may not match the actual file
+        candidates = sorted(glob(escape(path.join(self.BM_file_dir, path.splitext(file_path)[0])) + '.*'))
+        if candidates:
+            return path.relpath(candidates[0], self.BM_file_dir)
+        return None
 
     def add_file_to_copy(self, file_path):
         file_path = (file_path
