@@ -1,0 +1,4 @@
+audioop-lts>=0.2.2; python_version >= "3.13"
+chardet>=7.6.0
+pydub>=0.25.1
+tqdm>=4.70.1
