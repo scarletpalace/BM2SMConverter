@@ -69,6 +69,11 @@ class TimingSectionManager(object):
             lst.clear()
             lst += result
 
+        # A BPM change to the BPM that is already in effect changes nothing
+        self._bpm_changes = [T
+                             for i, T in enumerate(self._bpm_changes)
+                             if i == 0 or T[1] != self._bpm_changes[i - 1][1]]
+
         def make_bpm_func(period, bpm):
             fr, to = period
             coefficient = Fraction(240, bpm)

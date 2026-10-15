@@ -32,6 +32,7 @@ class BMChartParser(object):
         self._LN_objects = set()
         self._LN_opened = {}
         self._last_key_objects = {}
+        self._lead_in = Fraction(0)
         self._LN_type = 1
 
         self.BM_file_name = path.splitext(path.basename(in_file))[0]
@@ -283,8 +284,13 @@ class BMChartParser(object):
             return
 
         last_measure = int(max(T[2].initial_measure for T in self._dynamic_data))
+        # A shortened first measure is a common trick to delay the chart slightly.
+        #   Pad it with silence up to a full measure so the rest of the chart stays on SM's measure grid.
+        #   The audio is baked from the same positions, so it gets the same lead-in and stays in sync.
+        lead_in = self._lead_in = max(Fraction(0), 1 - measure_lengths.get(0, 1))
+
         measure_starts = []
-        current_start = Fraction(0)
+        current_start = Fraction(lead_in)
         for measure in range(last_measure + 1):
             measure_starts.append(current_start)
             current_start += measure_lengths.get(measure, 1)
@@ -449,6 +455,10 @@ class BMChartParser(object):
         do_scan(lengths, 'Processing time signature changes')
         self._offset_dynamic_data()
         do_scan(slopes, 'Processing BPM changes')
+        # The lead-in should play at the BPM the chart starts with, not the #BPM header one
+        starting_bpms = [bpm for position, bpm in self.timing_manager.bpm_list if position == self._lead_in]
+        if self._lead_in and starting_bpms:
+            self.timing_manager.add_bpm_change(0, starting_bpms[-1])
         do_scan(discontinuities, 'Processing stops')
         self.timing_manager.fix()
 
