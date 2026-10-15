@@ -272,55 +272,29 @@ class BMChartParser(object):
 
         return mine_adder
 
-    # Previous algorithm was naive and, while okay for most applications, it would become
-    #  a massive performance drain for any chart that uses lots of time signature changes
-    #    which is not that uncommon
-    # Basically previous algorithm was a O(2n^2) on.
-    # This algorithm is expected to perform in O(n)
-
-    # The algorithm exploits presence of order for datums and time changes
-    #   Which allows to create a concurrent environment as follows.
+    # A measure length change (#xxx02) only affects its own measure, but shifts every measure after it.
+    #   Precompute where each measure starts, then place every datum relative to its measure's start.
+    #   O(measures + datums)
     # noinspection PyPropertyAccess
     def _offset_dynamic_data(self):
-        ordered_datums = sorted((T[2] for T in self._dynamic_data),
-                                key=operator.attrgetter('initial_measure'))
-        ordered_time_sgn = self.timing_manager.time_sgn_list
+        measure_lengths = self.timing_manager.time_sgn_dict
 
-        if len(ordered_time_sgn) == 0:
+        if len(measure_lengths) == 0 or len(self._dynamic_data) == 0:
             return
 
-        current_shift = 0
-        new_shift = 0
-        current_time_sgn = ordered_time_sgn.pop(0)
-        changing_displacement = True
+        last_measure = int(max(T[2].initial_measure for T in self._dynamic_data))
+        measure_starts = []
+        current_start = Fraction(0)
+        for measure in range(last_measure + 1):
+            measure_starts.append(current_start)
+            current_start += measure_lengths.get(measure, 1)
 
-        with standard_tqdm(iterable=ordered_datums, desc='Displacing rows') as progress_ordered_datum:
-            for datum in progress_ordered_datum:
-                displacement_measure, displacement_amount = current_time_sgn
-
-                while datum.initial_measure > displacement_measure:
-                    if len(ordered_time_sgn) == 0:
-                        displacement_measure, displacement_amount = 9e4000, 9e4000
-                    else:
-                        current_time_sgn = ordered_time_sgn.pop(0)
-                        displacement_measure, displacement_amount = current_time_sgn
-                        current_shift += new_shift
-                        new_shift = displacement_amount - 1
-                        changing_displacement = False
-
-                if datum.initial_measure < displacement_measure:
-                    changing_displacement = False
-                    datum.global_position += current_shift
-
-                if datum.initial_measure == displacement_measure:
-                    local_position = datum.initial_position - datum.initial_measure
-                    new_local_position = local_position * displacement_amount
-                    displacement = new_local_position - local_position
-                    datum.global_position += displacement
-                    datum.global_position += current_shift
-                    if not changing_displacement:
-                        new_shift = displacement_amount - 1
-                        changing_displacement = True
+        with standard_tqdm(iterable=self._dynamic_data, desc='Displacing rows') as progress_dynamic_data:
+            for _, _, datum in progress_dynamic_data:
+                measure = int(datum.initial_measure)
+                local_position = datum.initial_position - datum.initial_measure
+                datum.global_position = (measure_starts[measure] +
+                                         local_position * measure_lengths.get(measure, 1))
 
     def _parse_implicit_subtitle(self, subtitle):
         keywords_to_difficulty = {
