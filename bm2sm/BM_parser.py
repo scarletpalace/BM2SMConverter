@@ -1,6 +1,7 @@
 import operator
 from fractions import Fraction
 from glob import glob, escape
+from io import StringIO
 from os import path
 from re import findall, match
 from shutil import copy2
@@ -367,22 +368,36 @@ class BMChartParser(object):
                     return
                 copy2(file_path, output_file)
 
+    @staticmethod
+    def _decode_chart(raw_data):
+        # BM charts are almost always Shift-JIS, which chardet often misdetects
+        #   (e.g. as MacLatin2 with near-zero confidence), so it is only trusted
+        #   when confident. Otherwise: UTF-8, then CP932 (Shift-JIS superset).
+        detected = char_detect(raw_data)
+        candidates = ['utf-8-sig']
+        if detected['encoding'] and detected['confidence'] >= 0.8:
+            candidates.append(detected['encoding'])
+        candidates.append('cp932')
+        if detected['encoding']:
+            candidates.append(detected['encoding'])
+
+        for encoding in candidates:
+            try:
+                return raw_data.decode(encoding)
+            except (UnicodeDecodeError, LookupError):
+                pass
+        return raw_data.decode('cp932', errors='replace')
+
     def _perform_static_reading(self):
         try:
             with open(self.BM_file_path, 'rb') as in_file:
-                encoding = char_detect(in_file.read())['encoding']
-
-            try:
-                with open(self.BM_file_path, 'r', encoding=encoding) as in_file:
-                    data = in_file.readlines()
-            except UnicodeDecodeError:
-                # Almost certainly chardet failed to detect ShiftJIS
-                with open(self.BM_file_path, 'r', encoding='shift_jis') as in_file:
-                    data = in_file.readlines()
-
+                raw_data = in_file.read()
         except IOError:
             print('Error occurred when opening BM chart')
             raise
+
+        # StringIO mimics text-mode file reading, including newline translation
+        data = StringIO(self._decode_chart(raw_data), newline=None).readlines()
 
         with standard_tqdm(iterable=data, desc='Performing static reading') as progress_data:
             for datum in progress_data:
