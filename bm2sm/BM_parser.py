@@ -1,4 +1,3 @@
-import operator
 from fractions import Fraction
 from glob import glob, escape
 from io import StringIO
@@ -13,7 +12,7 @@ from bm2sm.SM_converter import SMChartConverter
 from bm2sm.custom_fake_types import BPM, Beat, MsStop, Segment
 from bm2sm.data_structures import Datum, NotefieldObject, Sound, SoundSample
 from bm2sm.definitions import Keys, Representations, standard_tqdm
-from bm2sm.exceptions import BPMIsNotDefined, FirstHoldHasNoStart, LNTypeUnsupportedError, NotPlayer1Error, \
+from bm2sm.exceptions import BPMIsNotDefined, LNTypeUnsupportedError, NotPlayer1Error, \
     StopIsNotDefined, UndecidableAudioFile, UnsupportedControlFlowError
 from bm2sm.timing_manager import TimingSectionManager
 from modules import null_func
@@ -32,6 +31,7 @@ class BMChartParser(object):
 
         self._LN_objects = set()
         self._LN_opened = {}
+        self._last_key_objects = {}
         self._LN_type = 1
 
         self.BM_file_name = path.splitext(path.basename(in_file))[0]
@@ -210,14 +210,13 @@ class BMChartParser(object):
             val = datum.value
             if val in self._LN_objects:
                 # LNOBJ stuff
-                if len(self.SM_converter.objects) == 0:
-                    raise FirstHoldHasNoStart
-                last_tap_note = sorted((T
-                                        for T in self.SM_converter.objects
-                                        if T.key == key
-                                        if T.symbol == Representations.TAP),
-                                       key=operator.attrgetter('position'))[-1]
-                last_tap_note.symbol = Representations.LN_START
+                # Reference: The object just before the end point on this lane is the LN start point.
+                previous_object = self._last_key_objects.get(key)
+                if previous_object is None or previous_object.symbol != Representations.TAP:
+                    # No note to start the LN from (e.g. two end points in a row), so it is ignored
+                    print('Ignoring LN end point without a start point at {}'.format(datum.global_position))
+                    return
+                previous_object.symbol = Representations.LN_START
                 new_object = NotefieldObject(datum.global_position,
                                              key,
                                              Representations.LN_END)
@@ -226,6 +225,7 @@ class BMChartParser(object):
                                              key,
                                              Representations.TAP)
                 self._add_sound(datum)
+            self._last_key_objects[key] = new_object
             self._add_object(new_object)
 
         return key_adder
@@ -437,6 +437,8 @@ class BMChartParser(object):
                     amount += 1
             if amount == 0:
                 return
+            # Objects on a lane depend on the ones before them (LNs), so process them in chart order
+            filtered.sort(key=lambda T: T[2].global_position)
 
             with standard_tqdm(iterable=filtered, desc=message, total=amount) as progress_dynamic_data:
                 for measure, channel, datum in progress_dynamic_data:

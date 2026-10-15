@@ -26,10 +26,6 @@ class BPMIsNotDefined(ConversionError):
     pass
 
 
-class FirstHoldHasNoStart(ConversionError):
-    pass
-
-
 class UnsupportedGameMode(ConversionError):
     pass
 

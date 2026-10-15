@@ -64,8 +64,6 @@ optional arguments:
 
 * BPMIsNotDefined: Same as StopIsNotDefined, but for #BPM.
 
-* FirstHoldHasNoStart: Will only occur if the chart uses LNOBJ for LNs and the very first LN does not have a note preceding it on this lane.
-
 * LNTypeUnsupportedError: Should never happen unless a new appropriate value of LNTYPE is defined for BM format.
 
 * UndecidableAudioFile: This audio file is either not present at all or there are multiple candidates. Planned to be ignorable in future for unsafe mode.
