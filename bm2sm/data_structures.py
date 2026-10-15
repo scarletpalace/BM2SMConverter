@@ -100,6 +100,10 @@ class Sound(object):
         self._time = Time(1000 * time)
 
     @property
+    def wav_id(self):
+        return self._id
+
+    @property
     @transform_return(Time)
     def start_time_ms(self):
         return self._time

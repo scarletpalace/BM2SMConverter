@@ -31,12 +31,13 @@ class OGGConverter(object):
     #   4. Repeat until all sounds have been exhausted
     #   5. Previously created silent track is now the audio, output into a file
     #
-    # This does NOT allow sounds to be interrupted by another sound
-    #   so tracks utilizing this effect won't sound the same.
+    # Sounds are only interrupted by a later play of the same #WAV id (see cut_off_retriggered_sounds),
+    #   a sound is never interrupted by a different one.
     def bake_audio(self):
         if len(self.sounds) == 0:
             raise EmptyChart
         self.sync_everything()
+        self.cut_off_retriggered_sounds()
 
         song_length_in_frames = self.get_song_length_in_frames()
 
@@ -104,6 +105,31 @@ class OGGConverter(object):
         last_sound = max(self.sounds,
                          key=operator.attrgetter('end_time_frames'))
         return last_sound.end_time_frames
+
+    # Reference: "Whenever next aaa.wav is sounded, the sound of previous aaa.wav is interrupted."
+    #   So the same #WAV id played several times on one row sounds only once,
+    #   and a replay cuts the previous one off. Different ids pointing to the same file still stack.
+    # noinspection PyProtectedMember
+    def cut_off_retriggered_sounds(self):
+        by_id = {}
+        for sound in self.sounds:
+            by_id.setdefault(sound.wav_id, []).append(sound)
+
+        kept_sounds = []
+        for same_id_sounds in by_id.values():
+            same_id_sounds.sort(key=operator.attrgetter('start_time_frames'))
+            for sound, next_sound in zip(same_id_sounds, same_id_sounds[1:] + [None]):
+                if next_sound is None or sound.end_time_frames <= next_sound.start_time_frames:
+                    kept_sounds.append(sound)
+                    continue
+                frames_left = next_sound.start_time_frames - sound.start_time_frames
+                if frames_left <= 0:
+                    continue
+                segment = sound.sound
+                sound.sound = segment._spawn(segment.raw_data[:frames_left * segment.frame_width])
+                kept_sounds.append(sound)
+
+        self.sounds = kept_sounds
 
     # noinspection PyProtectedMember
     def sync_everything(self):
