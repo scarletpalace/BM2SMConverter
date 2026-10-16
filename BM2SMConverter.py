@@ -160,4 +160,11 @@ if __name__ == '__main__':
     if not args.out_dir:
         args.out_dir = path.split(args.in_file)[0]
 
-    convert(args.in_file, args.out_dir, args.keys, args.mode, args.seed)
+    try:
+        convert(args.in_file, args.out_dir, args.keys, args.mode, args.seed)
+    except Exception as e:
+        if args.verbose:
+            raise
+        # Non-verbose mode silences stderr, so the error would otherwise be lost
+        print('Failed: {}: {}'.format(type(e).__name__, e), file=sys.__stderr__)
+        sys.exit(1)
