@@ -91,8 +91,6 @@ A chart that fails to convert is reported and skipped, and a summary of failed c
 
 * LNTypeUnsupportedError: Should never happen unless a new appropriate value of LNTYPE is defined for BM format.
 
-* UndecidableAudioFile: This audio file is either not present at all or there are multiple candidates. Planned to be ignorable in future for unsafe mode.
-
 * UnknownDifficulty: Invalid value was supplied for #DIFFICULTY.
 
 * EmptyChart: This chart has no objects.

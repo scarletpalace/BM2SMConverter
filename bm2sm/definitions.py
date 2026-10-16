@@ -4,6 +4,10 @@ from tqdm import tqdm
 
 DEFAULT_FRAME_RATE = 44100
 
+# Extensions tried when a file referenced by a chart doesn't exist as written, in order of preference
+AUDIO_EXTENSIONS = ('.wav', '.ogg', '.flac', '.mp3')
+IMAGE_EXTENSIONS = ('.bmp', '.png', '.jpg', '.jpeg', '.gif')
+
 
 def standard_tqdm(*args, **kwargs):
     return tqdm(*args,

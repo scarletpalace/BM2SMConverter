@@ -10,10 +10,6 @@ class NotPlayer1Error(ConversionError):
     pass
 
 
-class UndecidableAudioFile(ConversionError):
-    pass
-
-
 class StopIsNotDefined(ConversionError):
     pass
 

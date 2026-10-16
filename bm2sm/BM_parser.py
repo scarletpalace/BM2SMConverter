@@ -1,8 +1,7 @@
 from fractions import Fraction
-from glob import glob, escape
 from io import StringIO
 from random import Random
-from os import makedirs, path
+from os import listdir, makedirs, path
 from re import findall, match
 from shutil import copy2
 
@@ -13,9 +12,9 @@ from bm2sm.SM_converter import SMChartConverter
 from bm2sm.control_flow import resolve_control_flow
 from bm2sm.custom_fake_types import BPM, Beat, MsStop, Segment
 from bm2sm.data_structures import Datum, NotefieldObject, Sound, SoundSample
-from bm2sm.definitions import Keys, Representations, normalize_chart_path, standard_tqdm, warn
+from bm2sm.definitions import AUDIO_EXTENSIONS, Keys, Representations, normalize_chart_path, standard_tqdm, warn
 from bm2sm.exceptions import BPMIsNotDefined, LNTypeUnsupportedError, NotPlayer1Error, \
-    StopIsNotDefined, UndecidableAudioFile
+    StopIsNotDefined
 from bm2sm.timing_manager import TimingSectionManager
 from modules import null_func
 from modules.decorators import transform_args
@@ -36,6 +35,8 @@ class BMChartParser(object):
         self._LN_opened = {}
         self._last_key_objects = {}
         self._lead_in = Fraction(0)
+        self._dir_listings = {}
+        self._missing_sounds = []
         self._LN_type = 1
 
         self.BM_file_name = path.splitext(path.basename(in_file))[0]
@@ -78,6 +79,12 @@ class BMChartParser(object):
 
         self._perform_static_reading()
         self._process_static_data()
+        if self._missing_sounds:
+            # The same file is often defined under several ids, so list each one once
+            missing_sounds = list(dict.fromkeys(self._missing_sounds))
+            warn('{} sound files not found, they will be silent: {}'.format(
+                len(missing_sounds),
+                ', '.join(missing_sounds[:5]) + (', ...' if len(missing_sounds) > 5 else '')))
         self._process_dynamic_data()
 
     def _add_bpm_change(self, datum: Datum):
@@ -152,16 +159,13 @@ class BMChartParser(object):
 
     @transform_args(..., ..., Segment)
     def _define_wav(self, value, wav_id):
-        header = path.dirname(self.BM_file_path)
-        # Keep the subfolder the sound is in, the extension is matched freely
-        filename = path.splitext(normalize_chart_path(value))[0]
-        file_path = escape(path.join(header, filename))
-        candidates = glob(file_path + '.*')
+        file_path = self.find_chart_file(normalize_chart_path(value), AUDIO_EXTENSIONS)
+        if file_path is None:
+            # Players play nothing for a missing sound, so the chart is still converted
+            self._missing_sounds.append(value)
+            return
 
-        if len(candidates) != 1:
-            raise UndecidableAudioFile(value)
-
-        self._wav_files_definitions[wav_id] = SoundSample(candidates[0])
+        self._wav_files_definitions[wav_id] = SoundSample(path.join(self.BM_file_dir, file_path))
 
     def _feed_message(self, message):
         channel_regex = r'\s*#(\d{3})(\w{2}):(\w{2,})\s*'
@@ -508,14 +512,33 @@ class BMChartParser(object):
                         else:
                             advanced_deciders[candidate](value, additional_data)
 
-    def find_chart_file(self, file_path):
-        """Return the path of a file referenced by the chart relative to it, or None if there is no such file."""
+    def _list_dir(self, directory):
+        if directory not in self._dir_listings:
+            try:
+                self._dir_listings[directory] = [T for T in listdir(directory) if path.isfile(path.join(directory, T))]
+            except OSError:
+                self._dir_listings[directory] = []
+        return self._dir_listings[directory]
+
+    def find_chart_file(self, file_path, extensions):
+        """Return the path of a file referenced by the chart relative to it, or None if there is no such file.
+
+        Like players do, the file name is matched ignoring case, and if there is no such file,
+        a file with the same name and one of `extensions` (in order of preference) is used instead."""
         if path.isfile(path.join(self.BM_file_dir, file_path)):
             return file_path
-        # Like with sounds, the extension written in the chart may not match the actual file
-        candidates = sorted(glob(escape(path.join(self.BM_file_dir, path.splitext(file_path)[0])) + '.*'))
-        if candidates:
-            return path.relpath(candidates[0], self.BM_file_dir)
+
+        sub_dir, file_name = path.split(file_path)
+        files = self._list_dir(path.join(self.BM_file_dir, sub_dir))
+        files_by_name = {T.lower(): T for T in files}
+
+        if file_name.lower() in files_by_name:
+            return path.join(sub_dir, files_by_name[file_name.lower()])
+
+        stem = path.splitext(file_name)[0].lower()
+        for extension in extensions:
+            if stem + extension in files_by_name:
+                return path.join(sub_dir, files_by_name[stem + extension])
         return None
 
     def add_file_to_copy(self, file_path):

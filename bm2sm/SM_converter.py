@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 from tqdm import tqdm
 
 from bm2sm.data_structures import NotefieldObject
-from bm2sm.definitions import Keys, Representations, normalize_chart_path, standard_tqdm, warn
+from bm2sm.definitions import IMAGE_EXTENSIONS, Keys, Representations, normalize_chart_path, standard_tqdm, warn
 from bm2sm.exceptions import EmptyChart, UnknownDifficulty, UnsupportedGameMode
 from modules.additional_functions import lcm
 from modules.decorators import transform_args
@@ -140,7 +140,7 @@ class SMChartConverter(object):
         setter = self.make_setter(field)
 
         def inner(new_value):
-            file_path = self._parent.find_chart_file(normalize_chart_path(new_value))
+            file_path = self._parent.find_chart_file(normalize_chart_path(new_value), IMAGE_EXTENSIONS)
             # A missing image is left out instead of failing the whole conversion
             if file_path is None:
                 warn('{} file not found, leaving it out: {}'.format(field, new_value))

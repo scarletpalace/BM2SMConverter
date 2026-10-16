@@ -3,7 +3,7 @@ from itertools import count as iter_count
 
 from pydub import AudioSegment
 
-from bm2sm.definitions import DEFAULT_FRAME_RATE, Keys
+from bm2sm.definitions import DEFAULT_FRAME_RATE, Keys, warn
 from modules.decorators import transform_args, transform_return
 from modules.fake_types import CastableToInt, NonNegativeInt, PositiveInt
 from .custom_fake_types import Character, ChartPosition, Measure, Message, Segment, Time
@@ -146,8 +146,18 @@ class SoundSample(object):
 
     @property
     def segment(self):
-        if self._segment:
-            return self._segment
-        self._segment = AudioSegment.from_file(self._location)
-        assert self._segment
+        if self._segment is not None:
+            return self._segment or None
+        try:
+            segment = AudioSegment.from_file(self._location)
+        except Exception as e:
+            # Players skip sounds they cannot decode, so the chart is still converted
+            warn('Cannot read sound file, skipping it: {} ({})'.format(self._location, e))
+            self._segment = False
+            return None
+        # Some files are cut off in the middle of a frame, which the mixer cannot handle, so the partial frame is dropped
+        partial_frame = len(segment.raw_data) % segment.frame_width
+        if partial_frame:
+            segment = segment._spawn(segment.raw_data[:-partial_frame])
+        self._segment = segment
         return self._segment
