@@ -177,7 +177,8 @@ class BMChartParser(object):
 
         defined_channels = ('01', '02', '03', '08', '09',
                             '11', '12', '13', '14', '15', '16', '18', '19',
-                            '31', '32', '33', '34', '35', '36', '38', '39',
+                            # Invisible objects (#xxx31-39) are left out: they only change which sound a key plays
+                            #   when the player presses it there, and are never sounded on their own
                             '51', '52', '53', '54', '55', '56', '58', '59',
                             'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D8', 'D9')
 
@@ -432,13 +433,6 @@ class BMChartParser(object):
             '18': self._make_key_adder(Keys.KEY_6),
             '19': self._make_key_adder(Keys.KEY_7),
             '16': self._make_key_adder(Keys.SCRATCH),
-            '31': self._add_sound,
-            '32': self._add_sound,
-            '33': self._add_sound,
-            '34': self._add_sound,
-            '35': self._add_sound,
-            '38': self._add_sound,
-            '39': self._add_sound,
             '51': self._make_ln_adder(Keys.KEY_1),
             '52': self._make_ln_adder(Keys.KEY_2),
             '53': self._make_ln_adder(Keys.KEY_3),
