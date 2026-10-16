@@ -9,11 +9,22 @@ AUDIO_EXTENSIONS = ('.wav', '.ogg', '.flac', '.mp3')
 IMAGE_EXTENSIONS = ('.bmp', '.png', '.jpg', '.jpeg', '.gif')
 
 
+class _StageTqdm(tqdm):
+    """Shows the time left while a stage runs, and how long it took once it is done."""
+    running_format = '{desc:>36} @ {percentage:>3.0f}% [left {remaining:>5}] [{n:>6}/{total:>6}]|{bar}|'
+    finished_format = '{desc:>36} @ {percentage:>3.0f}% [took {elapsed:>5}] [{n:>6}/{total:>6}]|{bar}|'
+
+    def close(self):
+        if not self.disable:
+            self.bar_format = self.finished_format
+        super().close()
+
+
 def standard_tqdm(*args, **kwargs):
-    return tqdm(*args,
-                bar_format='{desc:>36} @ {percentage:>3.0f}% [{remaining:>5}] [{n:>6}/{total:>6}]|{bar}|',
-                file=sys.stdout,  # Not sure why tqdm outputs to stderr by default
-                **kwargs)
+    return _StageTqdm(*args,
+                      bar_format=_StageTqdm.running_format,
+                      file=sys.stdout,  # Not sure why tqdm outputs to stderr by default
+                      **kwargs)
 
 
 def normalize_chart_path(file_path):
