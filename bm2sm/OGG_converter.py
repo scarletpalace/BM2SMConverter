@@ -1,5 +1,5 @@
 import operator
-from audioop import add as audio_add
+import audioop
 from typing import List
 
 from pydub import AudioSegment
@@ -12,6 +12,31 @@ from modules.decorators import transform_return
 from modules.fake_types import CastableToInt
 
 
+# Sounds are summed as 32 bit samples scaled down by this much, so that up to this many full volume sounds
+#   can overlap without the sum clipping. The sum is clipped once at the end, like a player's output is,
+#   which makes the result independent of the order the sounds are added in.
+_MIX_HEADROOM = 256
+
+
+def mix_sounds(sounds, length_in_frames, sample_width, channels):
+    """Mix `sounds` (all with the same format) into one track of `length_in_frames`, return its raw data."""
+    mix_width = 4
+    frame_width = mix_width * channels
+    mix = bytearray(length_in_frames * frame_width)
+
+    with standard_tqdm(iterable=sounds, desc='Mixing sounds') as progress_sounds:
+        for sound in progress_sounds:
+            data = audioop.lin2lin(sound.sound.raw_data, sample_width, mix_width)
+            data = audioop.mul(data, mix_width, 1 / _MIX_HEADROOM)
+            start = sound.start_time_frames * frame_width
+            end = start + len(data)
+            mix[start:end] = audioop.add(bytes(mix[start:end]), data, mix_width)
+
+    # Scaling back up clips anything that went over the range, then the samples are converted back
+    mix = audioop.mul(bytes(mix), mix_width, _MIX_HEADROOM)
+    return audioop.lin2lin(mix, mix_width, sample_width)
+
+
 class OGGConverter(object):
     """A class where audio baking is done."""
 
@@ -22,14 +47,9 @@ class OGGConverter(object):
         self.parent = parent
         self.sounds = []
 
-    # The basic idea of this algorithm is as follows
-    #   0. Sync all sounds, create a silent track of certain length.
-    #   1. Sort all sounds, by duration and by starting time.
-    #   2. Starting from a null track, add sounds in such a way
-    #        so that different sounds never intersect and overlap as such
-    #   3. Mix this track with previously created silent track
-    #   4. Repeat until all sounds have been exhausted
-    #   5. Previously created silent track is now the audio, output into a file
+    # Every sound is mixed straight into its place in a silent track as long as the song.
+    #   Each mix only touches the part of the track the sound covers, so the time it takes
+    #   depends on the total length of the sounds rather than on how many overlap.
     #
     # Sounds are only interrupted by a later play of the same #WAV id (see cut_off_retriggered_sounds),
     #   a sound is never interrupted by a different one.
@@ -41,58 +61,14 @@ class OGGConverter(object):
 
         song_length_in_frames = self.get_song_length_in_frames()
 
-        # Do you like immutability, punk?
-        #   No you don't. Fuck you.
         common_sound = self.sounds[0].sound
         sample_width = common_sound.sample_width
         channels = common_sound.channels
 
-        multiplier = sample_width * channels
-        silence_datum = b'\0' * multiplier
+        result = mix_sounds(self.sounds, song_length_in_frames, sample_width, channels)
 
-        sounds_to_process = self.sounds
-        result = silence_datum * song_length_in_frames
-
-        overall_progress = standard_tqdm(desc='Processing track #1', total=len(sounds_to_process))
-        track_counter = 1
-        while len(sounds_to_process):
-            sounds_processed_this_time = 0
-
-            sounds_to_process.sort(key=operator.attrgetter('duration_frames'))
-            sounds_to_process.sort(key=operator.attrgetter('start_time_frames'))
-
-            data_fragments = []
-            unprocessed_sounds = []
-
-            last_frame = 0
-
-            with standard_tqdm(iterable=sounds_to_process, leave=False) as progress_sounds_to_process:
-                for sound in progress_sounds_to_process:
-                    start_frame = sound.start_time_frames
-                    end_frame = sound.end_time_frames
-                    if start_frame >= last_frame:
-                        padding_silence = silence_datum * (start_frame - last_frame)
-                        data_fragments.append(padding_silence)
-                        data_fragments.append(sound.sound.raw_data)
-                        last_frame = end_frame
-                        sounds_processed_this_time += 1
-                    else:
-                        unprocessed_sounds.append(sound)
-
-            imposed_data = b''.join(data_fragments)
-            finishing_silence = silence_datum * (song_length_in_frames -
-                                                 last_frame)
-            data_fragments.clear()
-            imposed_data = b''.join((imposed_data, finishing_silence))
-            result = audio_add(result, imposed_data, sample_width)
-            sounds_to_process = unprocessed_sounds
-            track_counter += 1
-            overall_progress.set_description('Processing track #{}'.format(track_counter))
-            overall_progress.update(sounds_processed_this_time)
-
-        overall_progress.close()
         tqdm.write('Writing OGG file')
-        output = AudioSegment(data=result,
+        output = AudioSegment(data=bytes(result),
                               channels=channels,
                               frame_rate=DEFAULT_FRAME_RATE,
                               sample_width=sample_width)

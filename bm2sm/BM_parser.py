@@ -1,7 +1,9 @@
+import operator
+from concurrent.futures import ThreadPoolExecutor
 from fractions import Fraction
 from io import StringIO
 from random import Random
-from os import listdir, makedirs, path
+from os import cpu_count, listdir, makedirs, path
 from re import findall, match
 from shutil import copy2
 
@@ -393,6 +395,17 @@ class BMChartParser(object):
             for datum in progress_data:
                 self._feed_message(datum)
 
+    def _load_sounds(self, used_values):
+        """Decode all sounds used by the chart at once, in parallel, since decoding is by far the slowest part."""
+        samples = {self._wav_files_definitions[T] for T in set(used_values) if T in self._wav_files_definitions}
+        if not samples:
+            return
+        # Decoding mostly waits for ffmpeg processes or reads files, so threads are enough to use all cores
+        with ThreadPoolExecutor(max_workers=cpu_count() or 4) as executor:
+            loading = executor.map(operator.attrgetter('segment'), samples)
+            for _ in standard_tqdm(iterable=loading, desc='Loading sounds', total=len(samples)):
+                pass
+
     def _process_dynamic_data(self):
         self._dynamic_data = sorted(self._dynamic_data, key=lambda v: v[0])
 
@@ -473,6 +486,7 @@ class BMChartParser(object):
         self.timing_manager.fix()
 
         # And then add objects to the notefield
+        self._load_sounds(datum.value for _, channel, datum in self._dynamic_data if channel in content)
         do_scan(content, 'Parsing objects')
 
     # noinspection SpellCheckingInspection

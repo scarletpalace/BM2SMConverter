@@ -1,7 +1,11 @@
 from fractions import Fraction
 from itertools import count as iter_count
 
+from os import path
+from subprocess import DEVNULL, PIPE, run
+
 from pydub import AudioSegment
+from pydub.audio_segment import fix_wav_headers
 
 from bm2sm.definitions import DEFAULT_FRAME_RATE, Keys, warn
 from modules.decorators import transform_args, transform_return
@@ -98,6 +102,8 @@ class Sound(object):
             self.sound = self.sound.set_frame_rate(DEFAULT_FRAME_RATE)
 
         self._time = Time(1000 * time)
+        # Used a lot while mixing, and computing it with fractions every time is slow
+        self._start_time_frames = NonNegativeInt(Fraction(DEFAULT_FRAME_RATE, 1000) * self._time)
 
     @property
     def wav_id(self):
@@ -109,9 +115,8 @@ class Sound(object):
         return self._time
 
     @property
-    @transform_return(NonNegativeInt)
     def start_time_frames(self):
-        return Fraction(DEFAULT_FRAME_RATE, 1000) * self.start_time_ms
+        return self._start_time_frames
 
     @property
     @transform_return(Time)
@@ -134,6 +139,21 @@ class Sound(object):
         return self.start_time_frames + self.duration_frames
 
 
+def _decode_sound(location):
+    if path.splitext(location)[1].lower() not in ('.ogg', '.mp3'):
+        return AudioSegment.from_file(location)
+    # pydub runs ffprobe before decoding to choose the sample format, but lossy formats always end up as 16 bit.
+    #   Skipping it halves the time, which matters with charts that have a thousand keysounds.
+    process = run([AudioSegment.converter, '-v', 'error', '-i', location, '-vn', '-acodec', 'pcm_s16le', '-f', 'wav', '-'],
+                  stdin=DEVNULL, stdout=PIPE, stderr=PIPE)
+    if process.returncode != 0:
+        raise RuntimeError(process.stderr.decode(errors='replace').strip())
+    # Same as what pydub does with ffmpeg output, since the piped WAV header has no sizes
+    data = bytearray(process.stdout)
+    fix_wav_headers(data)
+    return AudioSegment(data=bytes(data))
+
+
 class SoundSample(object):
     """Basic object representing a loaded keynote sound."""
 
@@ -149,7 +169,7 @@ class SoundSample(object):
         if self._segment is not None:
             return self._segment or None
         try:
-            segment = AudioSegment.from_file(self._location)
+            segment = _decode_sound(self._location)
         except Exception as e:
             # Players skip sounds they cannot decode, so the chart is still converted
             warn('Cannot read sound file, skipping it: {} ({})'.format(self._location, e))
@@ -159,5 +179,8 @@ class SoundSample(object):
         partial_frame = len(segment.raw_data) % segment.frame_width
         if partial_frame:
             segment = segment._spawn(segment.raw_data[:-partial_frame])
+        # Resampled once here, instead of every time the sound is placed in the chart
+        if segment.frame_rate != DEFAULT_FRAME_RATE:
+            segment = segment.set_frame_rate(DEFAULT_FRAME_RATE)
         self._segment = segment
         return self._segment
