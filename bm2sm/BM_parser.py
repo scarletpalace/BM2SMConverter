@@ -37,6 +37,7 @@ class BMChartParser(object):
         self._LN_opened = {}
         self._last_key_objects = {}
         self._lead_in = Fraction(0)
+        self._difficulty_is_explicit = False
         self._dir_listings = {}
         self._missing_sounds = []
         self._LN_type = 1
@@ -313,7 +314,17 @@ class BMChartParser(object):
                 datum.global_position = (measure_starts[measure] +
                                          local_position * measure_lengths.get(measure, 1))
 
+    def _set_difficulty(self, value):
+        self.SM_converter.set_difficulty(value)
+        self._difficulty_is_explicit = True
+
     def _parse_implicit_subtitle(self, subtitle):
+        self.SM_converter.make_setter('subtitle')(subtitle.strip())
+
+        # The difficulty is only guessed from the subtitle when #DIFFICULTY doesn't state it
+        if self._difficulty_is_explicit:
+            return
+
         keywords_to_difficulty = {
             1: ("EASY", "BEGINNER", "LIGHT", "SIMPLE", "[B]", "(B)"),
             2: ("NORMAL", "STANDARD", "[N]", "(N)"),
@@ -492,7 +503,7 @@ class BMChartParser(object):
             'ARTIST': self.SM_converter.make_setter('artist'),
             'GENRE': self.SM_converter.make_setter('genre'),
             'BPM': self._set_initial_bpm,
-            'DIFFICULTY': self.SM_converter.set_difficulty,
+            'DIFFICULTY': self._set_difficulty,
             'LNTYPE': self._set_ln_type,
             'LNOBJ': self._add_ln_object,
             'STAGEFILE': self.SM_converter.make_file_setter('bg'),
