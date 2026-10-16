@@ -54,10 +54,15 @@ class SMChartConverter(object):
         self.objects = []
         self._parent = parent
 
-        try:
-            self._meta_data['game_mode'] = Keys.META[len(keys)]
-        except KeyError:
-            raise UnsupportedGameMode
+        if keys is None:
+            # Native beatmania layout. Its scratch lane is stored last, but displayed on the left
+            keys = Keys.BEATMANIA_7K_KEYS
+            self._meta_data['game_mode'] = Keys.BEATMANIA_7K_MODE
+        else:
+            try:
+                self._meta_data['game_mode'] = Keys.META[len(keys)]
+            except KeyError:
+                raise UnsupportedGameMode
 
         self.keys = [
             getattr(Keys, Keys.KEYS[key])

@@ -49,6 +49,10 @@ class Keys(object):
         'X': 'NONE'
     }
 
+    # Etterna's "bm-single7": 7 keys with the scratch stored as the last column
+    BEATMANIA_7K_KEYS = '1234567S'
+    BEATMANIA_7K_MODE = 'bm-single7'
+
     META = {
         4: 'dance-single',
         5: 'pump-single',

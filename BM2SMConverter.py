@@ -113,11 +113,11 @@ if __name__ == '__main__':
 
     arg_parser.add_argument('-K', '--keys',
                             action='store',
-                            default='S1234567',
+                            default=None,
                             help="How the keys from BM chart map onto SM chart. Accepted string lengths: 4, 5, 6, 7, "
                                  "8, 10 characters. 1-7 means KEY1-KEY7, S means scratch track, X means empty "
                                  "track. Only leftmost value is used, so duplicated values are treated the same as X. "
-                                 "Default: S1234567",
+                                 "Default: the bm-single7 game mode (7 keys and scratch).",
                             type=str)
 
     arg_parser.add_argument('-M', '--mode',

@@ -45,7 +45,8 @@ options:
                         string lengths: 4, 5, 6, 7, 8, 10 characters. 1-7
                         means KEY1-KEY7, S means scratch track, X means empty
                         track. Only leftmost value is used, so duplicated
-                        values are treated the same as X. Default: S1234567
+                        values are treated the same as X. Default: the bm-
+                        single7 game mode (7 keys and scratch).
   -M, --mode {ALL,SM,AUDIO}
                         Converter mode, useful for batch conversion. SM will
                         only convert to SM chart. AUDIO only bakes OGG audio
