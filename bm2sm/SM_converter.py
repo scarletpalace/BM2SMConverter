@@ -12,6 +12,13 @@ from modules.decorators import transform_args
 from modules.fake_types import CastableToInt, NonNegativeInt
 
 
+def escape_sm_text(text):
+    """Escape characters that SM files use as delimiters, e.g. in "obj:nickname" credited in the artist field"""
+    for character in ('\\', ':', ';', '#'):
+        text = text.replace(character, '\\' + character)
+    return text
+
+
 class SMChartConverter(object):
     """A class composing the SM chart."""
     _SM_format = """#TITLE:{title};
@@ -22,7 +29,7 @@ class SMChartConverter(object):
 #SELECTABLE:YES;
 #BANNER:{banner};
 #BACKGROUND:{bg};
-#GENRE:{genre}
+#GENRE:{genre};
 #CDTITLE:;
 #OFFSET:0.0000000;
 #BPMS:{BPM_changes};
@@ -35,6 +42,8 @@ class SMChartConverter(object):
 0.000,0.000,0.000,0.000,0.000:
 {measures}
 ;"""
+    # Free text fields, which may contain characters that have a meaning in SM files
+    _TEXT_FIELDS = ('title', 'subtitle', 'artist', 'credit', 'genre')
     objects = ...  # type: List[NotefieldObject]
     _parent = ...  # type: 'BMChartParser'
     _meta_data = ...  # type: Dict[str, Any]
@@ -126,6 +135,7 @@ class SMChartConverter(object):
         audio_out_file = self._parent.OGG_file_name
         result = self._SM_format.format(**{
             **self._meta_data,
+            **{field: escape_sm_text(self._meta_data[field]) for field in self._TEXT_FIELDS},
             'BPM_changes': self._parent.timing_manager.bpm_string,
             'stops': self._parent.timing_manager.ms_stops_string,
             'measures': notes,

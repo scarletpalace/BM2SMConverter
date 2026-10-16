@@ -482,6 +482,7 @@ class BMChartParser(object):
             'TITLE': self.SM_converter.make_setter('title'),
             'SUBTITLE': self._parse_implicit_subtitle,
             'ARTIST': self.SM_converter.make_setter('artist'),
+            'GENRE': self.SM_converter.make_setter('genre'),
             'BPM': self._set_initial_bpm,
             'DIFFICULTY': self.SM_converter.set_difficulty,
             'LNTYPE': self._set_ln_type,
