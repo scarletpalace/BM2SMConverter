@@ -38,6 +38,7 @@ class BMChartParser(object):
         self._last_key_objects = {}
         self._lead_in = Fraction(0)
         self._difficulty_is_explicit = False
+        self._uses_2p_lanes = False
         self._dir_listings = {}
         self._missing_sounds = []
         self._LN_type = 1
@@ -81,6 +82,8 @@ class BMChartParser(object):
             self._define_wav = null_func
 
         self._perform_static_reading()
+        if self._uses_2p_lanes:
+            raise NotPlayer1Error('The chart has notes on 2P lanes (double play)')
         self._process_static_data()
         if self._missing_sounds:
             # The same file is often defined under several ids, so list each one once
@@ -141,13 +144,6 @@ class BMChartParser(object):
 
         self.timing_manager.add_time_signature_change(measure, measure_length)
 
-    @transform_args(..., CastableToInt, **{
-        '@1': 'Cannot parse the expression of PLAYER'
-    })
-    def _assert_correct_player(self, player):
-        if player != 1:
-            raise NotPlayer1Error(player)
-
     @transform_args(..., BPM, Segment, **{
         '@1': 'Invalid BPM definition'
     })
@@ -204,6 +200,11 @@ class BMChartParser(object):
         elif match(channel_regex, message):
             measure, channel, data = findall(channel_regex, message)[0]
             channel = channel.upper()
+            # Like LR2, the play side is decided by the lanes the chart uses, since #PLAYER is often wrong
+            #   2P visible, invisible and long note channels: #xxx21-29, #xxx41-49, #xxx61-69
+            if channel[0] in '246' and channel[1] in '123456789' and any(
+                    data[T:T + 2] != '00' for T in range(0, len(data) - 1, 2)):
+                self._uses_2p_lanes = True
             if channel not in defined_channels:
                 return
             measure = int(measure)
@@ -497,7 +498,6 @@ class BMChartParser(object):
     # noinspection SpellCheckingInspection
     def _process_static_data(self):
         simple_deciders = {
-            'PLAYER': self._assert_correct_player,
             'TITLE': self.SM_converter.make_setter('title'),
             'SUBTITLE': self._parse_implicit_subtitle,
             'ARTIST': self.SM_converter.make_setter('artist'),

@@ -84,7 +84,7 @@ A chart that fails to convert is reported and skipped, and a summary of failed c
 
 * ValueError: Usually indicates an error with one of the values in the chart, such as negative BPM or incorrect stop. May also indicate an internal error.
 
-* NotPlayer1Error: The chart is not for player 1. Such charts are planned to be supported in the future.
+* NotPlayer1Error: The chart has notes on 2P lanes, i.e. it is a double play chart. Such charts are planned to be supported in the future. Like in LR2, the #PLAYER header is ignored, since charts often have a wrong value there.
 
 * StopIsNotDefined: Somewhere in the chart there is a stop invokation that has not been defined in any #STOP.
 
