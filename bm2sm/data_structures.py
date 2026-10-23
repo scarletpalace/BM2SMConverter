@@ -140,10 +140,20 @@ class Sound(object):
 
 
 def _decode_sound(location):
-    if path.splitext(location)[1].lower() not in ('.ogg', '.mp3'):
+    if path.splitext(location)[1].lower() in ('.ogg', '.mp3'):
+        # pydub runs ffprobe before decoding to choose the sample format, but lossy formats always end up as 16 bit.
+        #   Skipping it halves the time, which matters with charts that have a thousand keysounds.
+        return _decode_with_ffmpeg(location)
+    try:
         return AudioSegment.from_file(location)
-    # pydub runs ffprobe before decoding to choose the sample format, but lossy formats always end up as 16 bit.
-    #   Skipping it halves the time, which matters with charts that have a thousand keysounds.
+    except Exception:
+        # pydub cannot decode some formats, e.g. ADPCM compressed WAV files,
+        #   for which it asks ffmpeg for a 4 bit PCM output format that doesn't exist
+        return _decode_with_ffmpeg(location)
+
+
+def _decode_with_ffmpeg(location):
+    """Decode any format ffmpeg knows into 16 bit PCM."""
     process = run([AudioSegment.converter, '-v', 'error', '-i', location, '-vn', '-acodec', 'pcm_s16le', '-f', 'wav', '-'],
                   stdin=DEVNULL, stdout=PIPE, stderr=PIPE)
     if process.returncode != 0:
