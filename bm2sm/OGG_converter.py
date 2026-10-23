@@ -1,5 +1,6 @@
 import operator
 import audioop
+import math
 from typing import List
 
 from pydub import AudioSegment
@@ -13,8 +14,7 @@ from modules.fake_types import CastableToInt
 
 
 # Sounds are summed as 32 bit samples scaled down by this much, so that up to this many full volume sounds
-#   can overlap without the sum clipping. The sum is clipped once at the end, like a player's output is,
-#   which makes the result independent of the order the sounds are added in.
+#   can overlap without the sum clipping. This also makes the result independent of the order the sounds are added in.
 _MIX_HEADROOM = 256
 
 
@@ -32,8 +32,17 @@ def mix_sounds(sounds, length_in_frames, sample_width, channels):
             end = start + len(data)
             mix[start:end] = audioop.add(bytes(mix[start:end]), data, mix_width)
 
-    # Scaling back up clips anything that went over the range, then the samples are converted back
-    mix = audioop.mul(bytes(mix), mix_width, _MIX_HEADROOM)
+    # Keysounds are often mastered close to full volume each, so their sum can go far over the range.
+    #   Instead of clipping, the whole song is lowered just enough for its loudest sample to fit (peak normalization).
+    #   A song that fits already is left as it is.
+    mix = bytes(mix)
+    full_scale = (2 ** 31 - 1) / _MIX_HEADROOM
+    peak = audioop.max(mix, mix_width)
+    gain = _MIX_HEADROOM
+    if peak > full_scale:
+        gain *= full_scale / peak
+        print('Mix peaks {:.1f} dB over full scale, lowering the volume to fit'.format(20 * math.log10(peak / full_scale)))
+    mix = audioop.mul(mix, mix_width, gain)
     return audioop.lin2lin(mix, mix_width, sample_width)
 
 
