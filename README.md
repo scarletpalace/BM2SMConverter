@@ -25,7 +25,7 @@ This should print out usage message.
 
 ```
 usage: BM2SMConverter.py [-h] (-I IN_FILE | -L LIST) [-O OUT_DIR] [-K KEYS]
-                         [-M {ALL,SM,AUDIO}] [-S SEED] [-V]
+                         [-M {ALL,SM,AUDIO}] [-S SEED] [--keep-bmp] [-V]
 
 Convert BM files to SM
 
@@ -54,6 +54,8 @@ options:
   -S, --seed SEED       Seed for charts using #RANDOM/#SWITCH, which get
                         random branches picked. The same seed always picks the
                         same branches. Default: a new random pick every time.
+  --keep-bmp            Copy BMP images as they are. By default they are
+                        converted to PNG, which takes much less space.
   -V, --verbose         Verbose mode, will print all kinds of messages if set.
 ```
 

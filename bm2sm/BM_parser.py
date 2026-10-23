@@ -13,7 +13,7 @@ from bm2sm.OGG_converter import OGGConverter
 from bm2sm.SM_converter import SMChartConverter
 from bm2sm.control_flow import resolve_control_flow
 from bm2sm.custom_fake_types import BPM, Beat, MsStop, Segment
-from bm2sm.data_structures import Datum, NotefieldObject, Sound, SoundSample
+from bm2sm.data_structures import Datum, NotefieldObject, Sound, SoundSample, convert_image
 from bm2sm.definitions import AUDIO_EXTENSIONS, Keys, Representations, normalize_chart_path, standard_tqdm, warn
 from bm2sm.exceptions import BPMIsNotDefined, LNTypeUnsupportedError, NotPlayer1Error, \
     StopIsNotDefined
@@ -27,7 +27,8 @@ from modules.functions import base_16_to_dec, is_non_str_sequence
 class BMChartParser(object):
     """A class where all the heavy lifting of parsing BM files is happening."""
 
-    def __init__(self, in_file, out_dir, keys, load_sounds, seed=None):
+    def __init__(self, in_file, out_dir, keys, load_sounds, seed=None, convert_bmp=True):
+        self._convert_bmp = convert_bmp
         self._random = Random(seed)
         self._extended_BPM_definitions = {}
         self._extended_stop_definitions = {}
@@ -57,7 +58,8 @@ class BMChartParser(object):
         self.SM_file_dir = out_dir or self.BM_file_dir
         self.SM_file_path = path.join(self.SM_file_dir, self.SM_file_name)
 
-        self._affected_files = set()
+        # Source path -> path relative to the output directory
+        self._affected_files = {}
 
         self._dynamic_data = []
         self._static_data = []
@@ -74,7 +76,8 @@ class BMChartParser(object):
         # Some hooks
         copying_needed = not path.samefile(self.BM_file_dir, self.SM_file_dir)
         if not copying_needed:
-            self.add_file_to_copy = null_func
+            # Files stay where they are, so the SM file refers to them as they are
+            self.add_file_to_copy = lambda file_path: file_path
             self.copy_files = null_func
 
         if not load_sounds:
@@ -360,14 +363,16 @@ class BMChartParser(object):
         if len(self._affected_files) == 0:
             return
 
-        with standard_tqdm(iterable=self._affected_files, desc="Copying files into new directory") as progress_affected_files:
-            for file_path in progress_affected_files:
-                # Keep the path relative to the chart, since that is how the SM file refers to it
-                output_file = path.join(output_dir, path.relpath(file_path, self.BM_file_dir))
+        with standard_tqdm(iterable=self._affected_files.items(), desc="Copying files into new directory") as progress_affected_files:
+            for file_path, output_path in progress_affected_files:
+                output_file = path.join(output_dir, output_path)
                 if path.exists(output_file):
                     continue
                 makedirs(path.dirname(output_file), exist_ok=True)
-                copy2(file_path, output_file)
+                if path.splitext(file_path)[1].lower() == path.splitext(output_file)[1].lower():
+                    copy2(file_path, output_file)
+                elif not convert_image(file_path, output_file):
+                    warn('Cannot convert image, it will be missing: {}'.format(file_path))
 
     @staticmethod
     def _decode_chart(raw_data):
@@ -562,7 +567,11 @@ class BMChartParser(object):
         return None
 
     def add_file_to_copy(self, file_path):
-        file_path = (file_path
-                     if path.dirname(file_path) == self.BM_file_dir
-                     else path.join(self.BM_file_dir, file_path))
-        self._affected_files.add(file_path)
+        """Copy a file referenced by the chart (relative to it) along, return the path it will have in the output."""
+        # Keep the path relative to the chart, since that is how the SM file refers to it
+        output_path = file_path
+        if self._convert_bmp and path.splitext(file_path)[1].lower() == '.bmp':
+            # BMP images are uncompressed, PNG takes a fraction of the space
+            output_path = path.splitext(file_path)[0] + '.png'
+        self._affected_files[path.join(self.BM_file_dir, file_path)] = output_path
+        return output_path

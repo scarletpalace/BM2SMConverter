@@ -164,6 +164,13 @@ def _decode_with_ffmpeg(location):
     return AudioSegment(data=bytes(data))
 
 
+def convert_image(source, destination):
+    """Convert an image to the format of `destination`'s extension, return whether it worked."""
+    process = run([AudioSegment.converter, '-v', 'error', '-y', '-i', source, '-frames:v', '1', destination],
+                  stdin=DEVNULL, stdout=PIPE, stderr=PIPE)
+    return process.returncode == 0 and path.isfile(destination)
+
+
 class SoundSample(object):
     """Basic object representing a loaded keynote sound."""
 

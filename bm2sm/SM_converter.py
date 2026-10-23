@@ -160,9 +160,8 @@ class SMChartConverter(object):
             if file_path is None:
                 warn('{} file not found, leaving it out: {}'.format(field, new_value))
                 return
-            new_value = file_path
-            self._parent.add_file_to_copy(new_value)
-            setter(new_value)
+            # The file may be renamed when copied, e.g. converted to another format
+            setter(self._parent.add_file_to_copy(file_path) or file_path)
 
         return inner
 
