@@ -34,7 +34,9 @@ class SMChartConverter(object):
 #OFFSET:0.0000000;
 #BPMS:{BPM_changes};
 #STOPS:{stops};
-#NOTES:
+#TOTAL:{total};
+#JUDGERANK:{judge_rank};
+{defexrank}#NOTES:
 {game_mode}:
 :
 {difficulty_name}:
@@ -55,6 +57,11 @@ class SMChartConverter(object):
             'banner': '',
             'credit': '',
             'difficulty': 6,
+            # BMS gauge and judge values, which SM has no use for, but are kept for reference.
+            #   Missing ones get the values LR2 would use
+            'total': None,
+            'judge_rank': '2',
+            'defexrank': None,
             'difficulty_name': "Edit",
             'genre': '',
             'subtitle': '',
@@ -133,8 +140,11 @@ class SMChartConverter(object):
         )
 
         audio_out_file = self._parent.OGG_file_name
+        defexrank = self._meta_data['defexrank']
         result = self._SM_format.format(**{
             **self._meta_data,
+            'total': self._meta_data['total'] or self.default_total(),
+            'defexrank': '#DEFEXRANK:{};\n'.format(defexrank) if defexrank else '',
             **{field: escape_sm_text(self._meta_data[field]) for field in self._TEXT_FIELDS},
             'BPM_changes': self._parent.timing_manager.bpm_string,
             'stops': self._parent.timing_manager.ms_stops_string,
@@ -162,6 +172,33 @@ class SMChartConverter(object):
                 return
             # The file may be renamed when copied, e.g. converted to another format
             setter(self._parent.add_file_to_copy(file_path) or file_path)
+
+        return inner
+
+    def default_total(self):
+        """The #TOTAL LR2 uses for charts that don't have one, based on the amount of notes."""
+        # Counted on all lanes of the BM chart, whatever the key mapping, with a long note counting once
+        notes = sum(1 for T in self.objects if T.symbol in (Representations.TAP, Representations.LN_START))
+        if notes < 400:
+            total = notes / 5 + 200
+        elif notes < 600:
+            total = (notes - 400) / 2.5 + 280
+        else:
+            total = (notes - 600) / 5 + 360
+        return int(total * 0.8)
+
+    def make_number_setter(self, field, header):
+        """Create a setter for a numeric metadata `field` read from `header`, which ignores values that aren't numbers"""
+        setter = self.make_setter(field)
+
+        def inner(new_value):
+            new_value = new_value.strip()
+            try:
+                float(new_value)
+            except ValueError:
+                warn('Ignoring #{} that is not a number: {}'.format(header, new_value))
+                return
+            setter(new_value)
 
         return inner
 
