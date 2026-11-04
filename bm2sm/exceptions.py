@@ -22,10 +22,6 @@ class UnsupportedGameMode(ConversionError):
     pass
 
 
-class UnknownDifficulty(ConversionError):
-    pass
-
-
 class EmptyChart(ConversionError):
     pass
 

@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 from bm2sm.data_structures import NotefieldObject
 from bm2sm.definitions import IMAGE_EXTENSIONS, Keys, Representations, normalize_chart_path, standard_tqdm, warn
-from bm2sm.exceptions import EmptyChart, UnknownDifficulty, UnsupportedGameMode
+from bm2sm.exceptions import EmptyChart, UnsupportedGameMode
 from modules.additional_functions import lcm
 from modules.decorators import transform_args
 from modules.fake_types import CastableToInt, NonNegativeInt
@@ -208,10 +208,8 @@ class SMChartConverter(object):
 
     @transform_args(..., CastableToInt)
     def set_difficulty(self, difficulty):
+        """Set the difficulty from a BM #DIFFICULTY value, 1 (BEGINNER) to 5 (INSANE)"""
         diff_names = (None, "Beginner", "Easy", 'Medium', 'Hard', 'Challenge')
-        try:
-            self._meta_data['difficulty_name'] = diff_names[difficulty]
-        except IndexError:
-            raise UnknownDifficulty
+        self._meta_data['difficulty_name'] = diff_names[difficulty]
         self._meta_data['difficulty'] = difficulty
 

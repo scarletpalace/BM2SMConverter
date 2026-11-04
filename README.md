@@ -94,8 +94,6 @@ A chart that fails to convert is reported and skipped, and a summary of failed c
 
 * LNTypeUnsupportedError: Should never happen unless a new appropriate value of LNTYPE is defined for BM format.
 
-* UnknownDifficulty: Invalid value was supplied for #DIFFICULTY.
-
 * EmptyChart: This chart has no objects.
 
 * BeatStopTooShort: May happen on gimmick charts. Due to SM only supporting 1 ms stops at best, if one of the stops in BM chart is less than that, then there is no way to represent this in SM chart. Planned to be ignorable in unsafe mode in future.

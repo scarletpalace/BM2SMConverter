@@ -322,7 +322,16 @@ class BMChartParser(object):
                                          local_position * measure_lengths.get(measure, 1))
 
     def _set_difficulty(self, value):
-        self.SM_converter.set_difficulty(value)
+        value = value.strip()
+        try:
+            difficulty = int(value)
+        except ValueError:
+            difficulty = None
+        # Charts sometimes put e.g. their level here. Such a value is treated as if there was no #DIFFICULTY
+        if difficulty not in range(1, 6):
+            warn('Ignoring #DIFFICULTY {}, which should be 1 to 5'.format(value))
+            return
+        self.SM_converter.set_difficulty(difficulty)
         self._difficulty_is_explicit = True
 
     def _parse_implicit_subtitle(self, subtitle):
