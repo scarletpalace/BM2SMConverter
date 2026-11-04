@@ -296,7 +296,10 @@ class BMChartParser(object):
     def _offset_dynamic_data(self):
         measure_lengths = self.timing_manager.time_sgn_dict
 
-        if len(measure_lengths) == 0 or len(self._dynamic_data) == 0:
+        # This also runs without any measure length changes, since setting the positions snaps them to the grid
+        #   SM charts are on. Some charts divide measures into e.g. 190 parts, and without snapping, SM measures
+        #   would need as many rows as all of those divisions have in common, which can be billions.
+        if len(self._dynamic_data) == 0:
             return
 
         last_measure = int(max(T[2].initial_measure for T in self._dynamic_data))
