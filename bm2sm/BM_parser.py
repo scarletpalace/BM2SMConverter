@@ -186,6 +186,10 @@ class BMChartParser(object):
             measure, value = findall(time_signature_regex, message)[0]
             measure = int(measure)
             value = Fraction(value)
+            # Like LR2, a measure that isn't longer than 0 keeps its normal length
+            if value <= 0:
+                warn('Ignoring measure length {} of measure {}'.format(value, measure))
+                return
 
             datum_with_perks = Datum('00', measure, 0, 192)
             datum_with_perks.time_signature = value
