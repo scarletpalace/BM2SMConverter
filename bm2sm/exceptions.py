@@ -24,7 +24,3 @@ class UnsupportedGameMode(ConversionError):
 
 class EmptyChart(ConversionError):
     pass
-
-
-class BeatStopTooShort(ConversionError):
-    pass

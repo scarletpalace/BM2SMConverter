@@ -4,7 +4,6 @@ from itertools import chain
 from typing import Callable, List, Tuple
 
 from bm2sm.custom_fake_types import BPM, Beat, BeatStop, ChartPosition, Measure, MsStop, Time, TimeSignature
-from bm2sm.exceptions import BeatStopTooShort
 from modules.decorators import transform_args, transform_return
 from modules.fake_types import NonNegativeInt, PositiveFraction
 
@@ -30,12 +29,9 @@ class TimingSectionManager(object):
         #   BPM changes cannot be added as they will change the topology of the chart.
         stop_duration = Fraction(stop_duration, 192)
         closest_bpm = [v for v in self._bpm_changes if v[0] <= measure][-1][1]
-        duration_real = stop_duration * Fraction(240000, closest_bpm)
-        duration_usable = round(duration_real)
-
-        if duration_usable <= 0:
-            raise BeatStopTooShort('There is a beat stop that is shorter than 1 ms')
-        self.add_ms_stop(measure, duration_usable)
+        # Kept exact rather than rounded to milliseconds: gimmick charts can have hundreds of stops far shorter
+        #   than that at extreme BPMs, and rounding each of them would add up to the audio drifting off the notes
+        self._ms_stops.append((measure, stop_duration * Fraction(240, closest_bpm)))
 
     @transform_args(..., Measure, MsStop)
     def add_ms_stop(self, measure, stop_duration):
@@ -150,11 +146,14 @@ class TimingSectionManager(object):
 
     @property
     def ms_stops_string(self):
+        # Stop lengths are written with more precision than milliseconds, and the ones too short even for that are left
+        #   out, since SM cannot do anything with them
         return ",".join(
-            '{}.{:03g}={}.{:03g}'.format(
+            '{}.{:03g}={:.6f}'.format(
                 *self._split_fraction_for_string(Beat(4 * measure)),
-                *self._split_fraction_for_string(value))
+                float(value))
             for measure, value in self._ms_stops
+            if round(value, 6) > 0
         )
 
     @property
