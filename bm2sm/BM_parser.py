@@ -536,8 +536,8 @@ class BMChartParser(object):
 
         advanced_deciders = {
             r'STP (\d{3})\.(\d{3})': self._add_ms_stop,
-            r'BPM([0-9a-fA-F]{2})': self._define_extended_bpm,
-            r'EXBPM([0-9a-fA-F]{2})': self._define_extended_bpm,
+            r'BPM([0-9a-zA-Z]{2})': self._define_extended_bpm,
+            r'EXBPM([0-9a-zA-Z]{2})': self._define_extended_bpm,
             r'STOP([0-9a-zA-Z]{2})': self._define_stop,
             r'WAV([0-9a-zA-Z]{2})': self._define_wav
         }
