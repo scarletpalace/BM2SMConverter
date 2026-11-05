@@ -69,6 +69,8 @@ class SMChartConverter(object):
         }
         self.objects = []
         self._parent = parent
+        # (#BPMS, #STOPS) to write instead of the chart's own timing, when that cannot be kept
+        self.timing_override = None
 
         if keys is None:
             # Native beatmania layout. Its scratch lane is stored last, but displayed on the left
@@ -146,8 +148,8 @@ class SMChartConverter(object):
             'total': self._meta_data['total'] or self.default_total(),
             'defexrank': '#DEFEXRANK:{};\n'.format(defexrank) if defexrank else '',
             **{field: escape_sm_text(self._meta_data[field]) for field in self._TEXT_FIELDS},
-            'BPM_changes': self._parent.timing_manager.bpm_string,
-            'stops': self._parent.timing_manager.ms_stops_string,
+            'BPM_changes': (self.timing_override or (self._parent.timing_manager.bpm_string, None))[0],
+            'stops': (self.timing_override or (None, self._parent.timing_manager.ms_stops_string))[1],
             'measures': notes,
             'audio_name': audio_out_file
         })

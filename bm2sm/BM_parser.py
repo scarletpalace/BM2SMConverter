@@ -12,7 +12,7 @@ from chardet import detect as char_detect
 from bm2sm.OGG_converter import OGGConverter
 from bm2sm.SM_converter import SMChartConverter
 from bm2sm.control_flow import resolve_control_flow
-from bm2sm.custom_fake_types import BPM, Beat, MsStop, Segment
+from bm2sm.custom_fake_types import BPM, Beat, ChartPosition, MsStop, Segment
 from bm2sm.data_structures import Datum, NotefieldObject, Sound, SoundSample, convert_image
 from bm2sm.definitions import AUDIO_EXTENSIONS, Keys, Representations, normalize_chart_path, standard_tqdm, warn
 from bm2sm.exceptions import BPMIsNotDefined, LNTypeUnsupportedError, NotPlayer1Error, \
@@ -22,6 +22,10 @@ from modules import null_func
 from modules.decorators import transform_args
 from modules.fake_types import CastableToInt, PositiveInt
 from modules.functions import base_16_to_dec, is_non_str_sequence
+
+
+# How far off (in seconds) the SM file's timing may put a note before the chart gets a single BPM instead
+MAX_TIMING_ERROR = Fraction(5, 1000)
 
 
 class BMChartParser(object):
@@ -102,18 +106,18 @@ class BMChartParser(object):
         except ValueError:
             print('Invalid segment for BPM')
             raise
-        self.timing_manager.add_bpm_change(datum.global_position, bpm)
+        self.timing_manager.add_bpm_change(datum.exact_position, bpm)
 
     def _add_beat_stop(self, datum: Datum):
         if datum.value not in self._extended_stop_definitions:
             raise StopIsNotDefined(datum.value)
-        self.timing_manager.add_beat_stop(datum.global_position,
+        self.timing_manager.add_beat_stop(datum.exact_position,
                                           self._extended_stop_definitions[datum.value])
 
     def _add_extended_bpm_change(self, datum: Datum):
         if datum.value not in self._extended_BPM_definitions:
             raise BPMIsNotDefined(datum.value)
-        self.timing_manager.add_bpm_change(datum.global_position, self._extended_BPM_definitions[datum.value])
+        self.timing_manager.add_bpm_change(datum.exact_position, self._extended_BPM_definitions[datum.value])
 
     @transform_args(..., Segment, **{
         '@1': 'This LNOBJ is invalid'
@@ -136,7 +140,7 @@ class BMChartParser(object):
         sound = self._wav_files_definitions[datum.value].segment
         if not sound:
             return
-        time = self.timing_manager.position_to_time(datum.global_position)
+        time = self.timing_manager.position_to_time(datum.exact_position)
         self.OGG_converter.sounds.append(Sound(datum.value,
                                                sound,
                                                time))
@@ -224,6 +228,13 @@ class BMChartParser(object):
             header, value = findall(header_regex, message)[0]
             self._static_data.append((header, value))
 
+    @staticmethod
+    def _new_object(datum, key, symbol):
+        new_object = NotefieldObject(datum.global_position, key, symbol)
+        # Kept to find the object's exact time, in case the chart's timing has to be rebuilt
+        new_object.exact_position = datum.exact_position
+        return new_object
+
     def _make_key_adder(self, key):
         # noinspection PyUnusedLocal
         def key_adder(datum):
@@ -238,11 +249,11 @@ class BMChartParser(object):
                     warn('Ignoring LN end point without a start point at measure {:.3f}'.format(float(datum.initial_position)))
                     return
                 previous_object.symbol = Representations.LN_START
-                new_object = NotefieldObject(datum.global_position,
+                new_object = self._new_object(datum,
                                              key,
                                              Representations.LN_END)
             else:
-                new_object = NotefieldObject(datum.global_position,
+                new_object = self._new_object(datum,
                                              key,
                                              Representations.TAP)
                 self._add_sound(datum)
@@ -260,23 +271,23 @@ class BMChartParser(object):
             if self._LN_type == 1:
                 new_object = None
                 if not self._LN_opened[key]:
-                    new_object = NotefieldObject(datum.global_position, key, Representations.LN_START)
+                    new_object = self._new_object(datum, key, Representations.LN_START)
                     self._add_sound(datum)
                     self._LN_opened[key] = True
                 else:
-                    new_object = NotefieldObject(datum.global_position, key, Representations.LN_END)
+                    new_object = self._new_object(datum, key, Representations.LN_END)
                     self._LN_opened[key] = False
             elif self._LN_type == 2:
                 # MGQ
                 new_object = None
                 if not self._LN_opened[key]:
-                    new_object = NotefieldObject(datum.global_position, key, Representations.LN_START)
+                    new_object = self._new_object(datum, key, Representations.LN_START)
                     self._add_sound(datum)
                     self._LN_opened[key] = True
                 else:
                     if datum.value != '00':
                         return
-                    new_object = NotefieldObject(datum.global_position, key, Representations.LN_END)
+                    new_object = self._new_object(datum, key, Representations.LN_END)
                     self._LN_opened[key] = False
             else:
                 return
@@ -286,7 +297,7 @@ class BMChartParser(object):
 
     def _make_mine_adder(self, key):
         def mine_adder(datum):
-            new_object = NotefieldObject(datum.global_position,
+            new_object = self._new_object(datum,
                                          key,
                                          Representations.MINE)
             self._add_object(new_object)
@@ -494,7 +505,7 @@ class BMChartParser(object):
             if amount == 0:
                 return
             # Objects on a lane depend on the ones before them (LNs), so process them in chart order
-            filtered.sort(key=lambda T: T[2].global_position)
+            filtered.sort(key=lambda T: T[2].exact_position)
 
             with standard_tqdm(iterable=filtered, desc=message, total=amount) as progress_dynamic_data:
                 for measure, channel, datum in progress_dynamic_data:
@@ -515,6 +526,28 @@ class BMChartParser(object):
         # And then add objects to the notefield
         self._load_sounds(datum.value for _, channel, datum in self._dynamic_data if channel in content)
         do_scan(content, 'Parsing objects')
+        self._rebuild_timing_if_needed()
+
+    def _rebuild_timing_if_needed(self):
+        """Give the SM chart a single BPM with every object at its exact time, if its own timing cannot be kept.
+
+        Gimmick charts can have BPM changes and stops closer together than SM's grid, e.g. thousands of stops
+        at millions of BPM, which SM games merge, losing most of the timing."""
+        objects = self.SM_converter.objects
+        if not objects:
+            return
+        timing = self.timing_manager
+        sm_time = timing.sm_position_to_time()
+        worst_error = max(abs(timing.position_to_time(T.position) - sm_time(T.position)) for T in objects)
+        if worst_error <= MAX_TIMING_ERROR:
+            return
+
+        bpm = timing.main_bpm(max(T.exact_position for T in objects))
+        warn('The chart\'s timing cannot be kept in the SM file (notes would be up to {:.0f} ms off), '
+             'using a single BPM of {} with every note at its exact time'.format(float(worst_error) * 1000, float(bpm)))
+        objects[:] = [NotefieldObject(ChartPosition(timing.position_to_time(T.exact_position) * bpm / 240), T.key, T.symbol)
+                      for T in objects]
+        self.SM_converter.timing_override = (timing.single_bpm_string(bpm), '')
 
     # noinspection SpellCheckingInspection
     def _process_static_data(self):

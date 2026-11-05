@@ -29,6 +29,7 @@ class Datum(object):
         self._initial_position = self.initial_measure + Fraction(position, measure_split)
 
         self._global_position = self.initial_position
+        self._exact_position = self.initial_position
 
         Datum.FREE_ID += 1
 
@@ -54,8 +55,13 @@ class Datum(object):
 
     @global_position.setter
     def global_position(self, value: ChartPosition):
-        value = ChartPosition(value)
-        self._global_position = value
+        self._exact_position = Fraction(value)
+        self._global_position = ChartPosition(value)
+
+    @property
+    def exact_position(self):
+        """The position before it is snapped to the grid of SM charts, used for timing and sounds."""
+        return self._exact_position
 
     @property
     def initial_measure(self):

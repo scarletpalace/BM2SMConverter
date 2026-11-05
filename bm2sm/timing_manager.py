@@ -1,6 +1,6 @@
 import operator
 from fractions import Fraction
-from itertools import chain
+from bisect import bisect_left, bisect_right
 from typing import Callable, List, Tuple
 
 from bm2sm.custom_fake_types import BPM, Beat, BeatStop, ChartPosition, Measure, MsStop, Time, TimeSignature
@@ -18,17 +18,23 @@ class TimingSectionManager(object):
 
     def __init__(self):
         self._bpm_changes = []
+        # The BPM changes in position order, for looking up the BPM at a position. Rebuilt after every new change
+        self._sorted_bpm_changes = None
         self._fixed = False
         self._position_to_time = None
         self._ms_stops = []
         self._time_signature_changes = []
 
-    @transform_args(..., ChartPosition, BeatStop)
+    @transform_args(..., Measure, BeatStop)
     def add_beat_stop(self, measure, stop_duration):
         # Stepmania does not have real beat stops so we'll have to approximate by adding a close enough ms stop.
         #   BPM changes cannot be added as they will change the topology of the chart.
         stop_duration = Fraction(stop_duration, 192)
-        closest_bpm = [v for v in self._bpm_changes if v[0] <= measure][-1][1]
+        if self._sorted_bpm_changes is None:
+            # A stable sort, so of several changes at one position the last one added still wins
+            self._sorted_bpm_changes = sorted(self._bpm_changes, key=operator.itemgetter(0))
+            self._sorted_bpm_starts = [position for position, _ in self._sorted_bpm_changes]
+        closest_bpm = self._sorted_bpm_changes[bisect_right(self._sorted_bpm_starts, measure) - 1][1]
         # Kept exact rather than rounded to milliseconds: gimmick charts can have hundreds of stops far shorter
         #   than that at extreme BPMs, and rounding each of them would add up to the audio drifting off the notes
         self._ms_stops.append((measure, stop_duration * Fraction(240, closest_bpm)))
@@ -40,6 +46,7 @@ class TimingSectionManager(object):
     @transform_args(..., Measure, BPM)
     def add_bpm_change(self, measure, new_bpm):
         self._bpm_changes.append((measure, new_bpm))
+        self._sorted_bpm_changes = None
 
     @transform_args(..., Measure, TimeSignature)
     def add_time_signature_change(self, measure, value):
@@ -70,37 +77,27 @@ class TimingSectionManager(object):
                              for i, T in enumerate(self._bpm_changes)
                              if i == 0 or T[1] != self._bpm_changes[i - 1][1]]
 
-        def make_bpm_func(period, bpm):
-            fr, to = period
-            coefficient = Fraction(240, bpm)
+        # The time at the start of every BPM section and the total length of the stops up to every stop are
+        #   computed once, so finding the time of a position is a binary search instead of going through
+        #   every BPM change and stop, which gimmick charts have thousands of
+        bpm_starts = [position for position, _ in self._bpm_changes]
+        bpm_coefficients = [Fraction(240, bpm) for _, bpm in self._bpm_changes]
+        bpm_start_times = [Fraction(0)]
+        for i in range(1, len(bpm_starts)):
+            bpm_start_times.append(bpm_start_times[-1] + (bpm_starts[i] - bpm_starts[i - 1]) * bpm_coefficients[i - 1])
 
-            def bpm_func(position):
-                position = max(fr, min(to, position))
-                delta = position - fr
-                return delta * coefficient
+        stop_starts = [position for position, _ in self._ms_stops]
+        stops_total = [Fraction(0)]
+        for _, duration in self._ms_stops:
+            stops_total.append(stops_total[-1] + duration)
 
-            return bpm_func
-
-        def make_ms_stop_func(stop_start, stop_duration):
-            def ms_stop_func(position):
-                return stop_duration if position > stop_start else 0
-
-            return ms_stop_func
-
-        start_points, new_bpm = zip(*self._bpm_changes)
-        start_points = tuple(chain(start_points, (9e4000,)))
-        ranges = zip(start_points[:-1], start_points[1:])
-        steps = zip(ranges, new_bpm)
-
-        bpm_funcs = [make_bpm_func(*T) for T in steps]
-        ms_stop_funcs = [make_ms_stop_func(*T) for T in self._ms_stops]
-
-        full_chain = bpm_funcs + ms_stop_funcs
-
-        @transform_args(ChartPosition)
+        @transform_args(Measure)
         @transform_return(Time)
         def calculate_time_by_position(position):
-            return sum(map(lambda v: v(position), full_chain))
+            section = max(0, bisect_right(bpm_starts, position) - 1)
+            bpm_time = bpm_start_times[section] + max(0, position - bpm_starts[section]) * bpm_coefficients[section]
+            # A stop delays everything after it, but not what is at its own position
+            return bpm_time + stops_total[bisect_left(stop_starts, position)]
 
         self._position_to_time = calculate_time_by_position
         self._fixed = True
@@ -118,6 +115,48 @@ class TimingSectionManager(object):
     @property
     def position_to_time(self):
         return self._position_to_time
+
+    def sm_position_to_time(self):
+        """A function giving the time of a position (in measures, on the SM grid) as SM games see it from the SM file.
+
+        They put BPM changes and stops on rows of 1/48 beat and keep only the last of several on one row,
+        so for charts with very finely placed timing changes this can differ from the chart's real timing."""
+        bpms = {}
+        for measure, bpm in self._bpm_changes:
+            bpms[round(Beat(4 * measure) * 48)] = bpm
+        stops = {}
+        for measure, duration in self._ms_stops:
+            if round(duration, 6) > 0:
+                stops[round(Beat(4 * measure) * 48)] = round(duration, 6)
+
+        bpm_rows = sorted(bpms)
+        seconds_per_row = [Fraction(60, 48 * bpms[T]) for T in bpm_rows]
+        bpm_start_times = [Fraction(0)]
+        for i in range(1, len(bpm_rows)):
+            bpm_start_times.append(bpm_start_times[-1] + (bpm_rows[i] - bpm_rows[i - 1]) * seconds_per_row[i - 1])
+        stop_rows = sorted(stops)
+        stops_total = [Fraction(0)]
+        for row in stop_rows:
+            stops_total.append(stops_total[-1] + stops[row])
+
+        def calculate_time(position):
+            row = position * 192
+            section = max(0, bisect_right(bpm_rows, row) - 1)
+            bpm_time = bpm_start_times[section] + max(0, row - bpm_rows[section]) * seconds_per_row[section]
+            return bpm_time + stops_total[bisect_left(stop_rows, row)]
+
+        return calculate_time
+
+    def main_bpm(self, end_position):
+        """The BPM the chart spends the most time at, up to `end_position`."""
+        durations = {}
+        for i, (position, bpm) in enumerate(self._bpm_changes):
+            next_position = self._bpm_changes[i + 1][0] if i + 1 < len(self._bpm_changes) else end_position
+            durations[bpm] = durations.get(bpm, 0) + max(0, next_position - position) * Fraction(240, bpm)
+        return max(durations, key=durations.get)
+
+    def single_bpm_string(self, bpm):
+        return '0.000={}.{:03g}'.format(*self._split_fraction_for_string(bpm))
 
     @property
     def bpm_string(self):
