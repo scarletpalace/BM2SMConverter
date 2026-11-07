@@ -25,7 +25,8 @@ This should print out usage message.
 
 ```
 usage: BM2SMConverter.py [-h] (-I IN_FILE | -L LIST) [-O OUT_DIR] [-K KEYS]
-                         [-M {ALL,SM,AUDIO}] [-S SEED] [--keep-bmp] [-V]
+                         [-M {ALL,SM,AUDIO}] [-S SEED] [--keep-bmp]
+                         [--no-notify] [-V]
 
 Convert BM files to SM
 
@@ -56,6 +57,8 @@ options:
                         same branches. Default: a new random pick every time.
   --keep-bmp            Copy BMP images as they are. By default they are
                         converted to PNG, which takes much less space.
+  --no-notify           Don't show a desktop notification when a batch
+                        conversion (--list) finishes.
   -V, --verbose         Verbose mode, will print all kinds of messages if set.
 ```
 
@@ -77,6 +80,7 @@ Each chart is written into its own subfolder of the output folder, named after t
 A chart is skipped as a duplicate if an earlier chart in the list has the same file name in a folder with the same name (e.g. the same song copied to two places).
 If two different charts in the list have the same file name, the later ones get a numbered suffix (`chart_7key (2)`).
 A chart that fails to convert is reported and skipped, and a summary of failed charts is printed at the end.
+When the batch finishes, a desktop notification is shown (with `notify-send` on Linux or `osascript` on macOS), unless `--no-notify` is given.
 
 ## Notes
 

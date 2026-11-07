@@ -6,6 +6,9 @@
 # Abandon all hope ye who enter here
 
 
+import json
+import shutil
+import subprocess
 import sys
 from argparse import ArgumentParser
 from os import devnull, makedirs, path
@@ -36,7 +39,23 @@ def read_file_list(list_file):
         return [line.strip('"\'') for line in lines if line and not line.startswith('#')]
 
 
-def batch_convert(in_files, out_dir, keys, mode, seed=None, convert_bmp=True):
+def notify(title, message):
+    """Show a desktop notification if the system has a way to, otherwise do nothing."""
+    if shutil.which('notify-send'):
+        command = ['notify-send', '--app-name=BM2SMConverter', title, message]
+    elif shutil.which('osascript'):
+        command = ['osascript', '-e', 'display notification {} with title {}'.format(
+            json.dumps(message), json.dumps(title))]
+    else:
+        return
+    try:
+        subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def batch_convert(in_files, out_dir, keys, mode, seed=None, convert_bmp=True, notify_when_done=True):
     # Status goes to the real stdout, since non-verbose mode silences sys.stdout
     status = sys.__stdout__
     used_names = set()
@@ -77,11 +96,14 @@ def batch_convert(in_files, out_dir, keys, mode, seed=None, convert_bmp=True):
             failed.append(in_file)
             print('    Failed: {}: {}'.format(type(e).__name__, e), file=status, flush=True)
 
-    print('Converted {} of {} charts.'.format(len(in_files) - len(failed), len(in_files)), file=status)
+    summary = 'Converted {} of {} charts.'.format(len(in_files) - len(failed), len(in_files))
+    print(summary, file=status)
     if failed:
         print('Failed:', file=status)
         for in_file in failed:
             print('    ' + in_file, file=status)
+    if notify_when_done:
+        notify('Batch conversion finished', summary + (' {} failed.'.format(len(failed)) if failed else ''))
     return not failed
 
 
@@ -142,6 +164,11 @@ if __name__ == '__main__':
                             help='Copy BMP images as they are. By default they are converted to PNG, which takes '
                                  'much less space.')
 
+    arg_parser.add_argument('--no-notify',
+                            action='store_true',
+                            default=False,
+                            help="Don't show a desktop notification when a batch conversion (--list) finishes.")
+
     arg_parser.add_argument('-V', '--verbose',
                             action='store_true',
                             default=False,
@@ -161,7 +188,7 @@ if __name__ == '__main__':
 
     if args.list:
         success = batch_convert(read_file_list(args.list), args.out_dir, args.keys, args.mode, args.seed,
-                                not args.keep_bmp)
+                                not args.keep_bmp, not args.no_notify)
         sys.exit(0 if success else 1)
 
     if not args.out_dir:
