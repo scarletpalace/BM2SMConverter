@@ -10,10 +10,6 @@ class NotPlayer1Error(ConversionError):
     pass
 
 
-class StopIsNotDefined(ConversionError):
-    pass
-
-
 class BPMIsNotDefined(ConversionError):
     pass
 

@@ -92,9 +92,7 @@ When the batch finishes, a desktop notification is shown (with `notify-send` on 
 
 * NotPlayer1Error: The chart has notes on 2P lanes, i.e. it is a double play chart. Such charts are planned to be supported in the future. Like in LR2, the #PLAYER header is ignored, since charts often have a wrong value there.
 
-* StopIsNotDefined: Somewhere in the chart there is a stop invokation that has not been defined in any #STOP.
-
-* BPMIsNotDefined: Same as StopIsNotDefined, but for #BPM.
+* BPMIsNotDefined: Somewhere in the chart there is a BPM change that has not been defined in any #BPM. (A stop that has not been defined in any #STOP is ignored, like in LR2.)
 
 * LNTypeUnsupportedError: Should never happen unless a new appropriate value of LNTYPE is defined for BM format.
 

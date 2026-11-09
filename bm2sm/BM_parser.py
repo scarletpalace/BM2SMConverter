@@ -15,8 +15,7 @@ from bm2sm.control_flow import resolve_control_flow
 from bm2sm.custom_fake_types import BPM, Beat, ChartPosition, MsStop, Segment
 from bm2sm.data_structures import Datum, NotefieldObject, Sound, SoundSample, convert_image
 from bm2sm.definitions import AUDIO_EXTENSIONS, Keys, Representations, normalize_chart_path, standard_tqdm, warn
-from bm2sm.exceptions import BPMIsNotDefined, LNTypeUnsupportedError, NotPlayer1Error, \
-    StopIsNotDefined
+from bm2sm.exceptions import BPMIsNotDefined, LNTypeUnsupportedError, NotPlayer1Error
 from bm2sm.timing_manager import TimingSectionManager
 from modules import null_func
 from modules.decorators import transform_args
@@ -110,7 +109,10 @@ class BMChartParser(object):
 
     def _add_beat_stop(self, datum: Datum):
         if datum.value not in self._extended_stop_definitions:
-            raise StopIsNotDefined(datum.value)
+            # In LR2 an undefined stop works out to (almost exactly) no stop
+            warn('Ignoring stop {} at measure {:.3f}, which has no #STOP{} definition'.format(
+                datum.value, float(datum.initial_position), datum.value))
+            return
         self.timing_manager.add_beat_stop(datum.exact_position,
                                           self._extended_stop_definitions[datum.value])
 
@@ -151,10 +153,25 @@ class BMChartParser(object):
 
         self.timing_manager.add_time_signature_change(measure, measure_length)
 
+    @staticmethod
+    def _absolute_bpm(value, header):
+        """Like LR2, a negative BPM is timed as the same positive one (it only reverses the scrolling there)."""
+        try:
+            bpm = Fraction(str(value).strip())
+        except ValueError:
+            return value
+        if bpm < 0:
+            warn('Using {} as {}, since SM charts cannot scroll backwards'.format(header, -bpm))
+            return -bpm
+        return bpm
+
+    def _define_extended_bpm(self, bpm, bpm_id):
+        self._store_extended_bpm(self._absolute_bpm(bpm, '#BPM{} {}'.format(bpm_id, bpm.strip())), bpm_id)
+
     @transform_args(..., BPM, Segment, **{
         '@1': 'Invalid BPM definition'
     })
-    def _define_extended_bpm(self, bpm, bpm_id):
+    def _store_extended_bpm(self, bpm, bpm_id):
         self._extended_BPM_definitions[bpm_id] = bpm
 
     @transform_args(..., MsStop, Segment, **{
@@ -370,10 +387,13 @@ class BMChartParser(object):
                 if probable_keyword in subtitle:
                     self.SM_converter.set_difficulty(probable_diff)
 
+    def _set_initial_bpm(self, value):
+        self._store_initial_bpm(self._absolute_bpm(value, '#BPM {}'.format(str(value).strip())))
+
     @transform_args(..., BPM, **{
         '@1': 'Invalid initial BPM'
     })
-    def _set_initial_bpm(self, value):
+    def _store_initial_bpm(self, value):
         self.timing_manager.add_bpm_change(0, value)
 
     @transform_args(..., CastableToInt, **{
